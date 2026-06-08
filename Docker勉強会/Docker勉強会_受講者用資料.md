@@ -594,6 +594,9 @@ WORKDIR /app
 # JupyterLab（数百MB）の代わりに、軽量Webフレームワークの Flask（数MB）を使う
 RUN pip install --no-cache-dir flask
 
+# アプリ本体をコンテナにコピー（マウントなしでも単体で動くようにする）
+COPY app.py .
+
 # Flask開発サーバーの設定
 ENV FLASK_APP=app.py
 ENV FLASK_DEBUG=1
@@ -617,14 +620,19 @@ app = Flask(__name__)
 @app.route("/")
 def index():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return f"<h1>Hello from Docker + Flask!</h1><p>現在時刻: {now}</p>"
+    return (
+        "<h1>Hello from Docker + Flask!</h1>"
+        f"<p>現在時刻: {now}</p>"
+        "<p>このファイル(app.py)をホスト側で編集して保存すると、"
+        "Flask開発サーバーが自動で反映します！</p>"
+    )
 ```
 
 > `http://localhost:5000` にアクセスするだけで即座に開きます。
 
-### イメージのビルドとホストフォルダのマウント実行
+### イメージのビルドと実行
 
-このDockerfileのポイントは **`COPY` を書いていない** ことです。代わりに `docker run -v` で **ホストPC側のフォルダをコンテナの `/app` にマウント** します。こうすることで、ホスト側で `app.py` を編集すると、コンテナ内のFlask開発サーバー（`FLASK_DEBUG=1` 設定済み）が自動でリロードしてくれます。
+このDockerfileでは `COPY app.py .` で **アプリ本体をイメージに焼き込んでいます**。そのため、マウントなしの `docker run` だけでもコンテナ単体で動作します。
 
 ```bash
 # Docker勉強会フォルダに移動
@@ -638,17 +646,29 @@ docker build -t my-flask .
 # ビルドしたイメージを確認
 docker images
 
+# コンテナを起動する（COPYで焼き込んでいるのでマウントなしでもOK）
+#   -p 5000:5000   … ポート5000をホストに公開
+docker run --rm -it -p 5000:5000 --name flask-demo my-flask
+```
+
+ブラウザで `http://localhost:5000` を開くと、Flaskのページが表示されます。
+
+> **`COPY` を書き忘れると…：** `COPY app.py .` がないと、コンテナ内の `/app` が空のまま `flask run` が実行され、`Error: Could not import 'app'.` というエラーで起動に失敗します。`FLASK_APP=app.py` で指定したファイルがコンテナ内に存在しないためです。
+
+### ホスト編集を即反映させる（ホットリロード）
+
+開発中は **`docker run -v` で ホストPC側のフォルダをコンテナの `/app` にマウント** すると、ホスト側で `app.py` を編集・保存するだけで、コンテナ内のFlask開発サーバー（`FLASK_DEBUG=1` 設定済み）が自動でリロードしてくれます。マウントするとホスト側の最新ファイルが `COPY` で焼き込んだファイルを上書きするため、常に編集中の内容が反映されます。
+
+```bash
 # ホストの現在フォルダをコンテナの /app にマウントしてコンテナを起動
 #   -p 5000:5000              … ポート5000をホストに公開
-#   -v "$(pwd):/app"          … 今いるフォルダ（app.pyがある場所）を /app にマウント
+#   -v "/$(pwd):/app"         … 今いるフォルダ（app.pyがある場所）を /app にマウント
 #   --name flask-demo         … コンテナに名前を付ける
 docker run --rm -it -p 5000:5000 -v "/$(pwd):/app" --name flask-demo my-flask
 
 # Windows PowerShell の場合は $(pwd) を ${PWD} に置き換える
 # docker run --rm -it -p 5000:5000 -v "${PWD}:/app" --name flask-demo my-flask
 ```
-
-ブラウザで `http://localhost:5000` を開くと、Flaskのページが表示されます。
 
 #### ホットリロードを試す
 

@@ -8,6 +8,9 @@ WORKDIR /app
 # JupyterLab（数百MB）の代わりに、軽量Webフレームワークの Flask（数MB）を使う
 RUN pip install --no-cache-dir flask
 
+# アプリ本体をコンテナにコピー（マウントなしでも単体で動くようにする）
+COPY app.py .
+
 # Flask開発サーバーの設定
 ENV FLASK_APP=app.py
 ENV FLASK_DEBUG=1
